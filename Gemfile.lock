@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    header_guard (0.1.0)
+    header_guard (0.1.1)
       rack (~> 3.0)
 
 GEM

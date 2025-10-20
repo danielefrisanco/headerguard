@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = "A robust Rack middleware for enforcing modern HTTP security headers, including a highly configurable Content Security Policy (CSP)."
   spec.description   = "Designed for applications that require strong browser-side security, HeaderGuard automatically injects HSTS, X-Content-Type-Options, X-Frame-Options, and a customizable CSP. Ideal for SSO and high-security web services."
-  spec.homepage      = "https://github.com/placeholder/header_guard"
+  spec.homepage      = "https://github.com/danielefrisanco/headerguard"
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 2.6.6" 
   # Specify which files should be added to the gem when it is released.

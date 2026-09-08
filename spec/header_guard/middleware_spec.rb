@@ -130,7 +130,7 @@ RSpec.describe HeaderGuard::Middleware do
       
       # [status, headers, body]
       headers = response[1]
-      expect(headers["Content-Security-Policy"]).to eq(custom_csp)
+      expect(headers["content-security-policy"]).to eq(custom_csp)
     end
     
     it "allows overriding a standard default header" do
@@ -142,9 +142,9 @@ RSpec.describe HeaderGuard::Middleware do
       response = custom_app.call({ "PATH_INFO" => "/", "REQUEST_METHOD" => "GET", "Content-Type" => "text/html" })
       
       headers = response[1]
-      expect(headers["X-Frame-Options"]).to eq("SAMEORIGIN")
+      expect(headers["x-frame-options"]).to eq("SAMEORIGIN")
       # Ensure other headers are still the default
-      expect(headers["X-Content-Type-Options"]).to eq(default_headers["X-Content-Type-Options"])
+      expect(headers["x-content-type-options"]).to eq(default_headers["X-Content-Type-Options"])
     end
     
     it "uses the Content-Security-Policy-Report-Only header when configured" do
@@ -156,9 +156,83 @@ RSpec.describe HeaderGuard::Middleware do
       headers = response[1]
       
       # Check for the correct header
-      expect(headers["Content-Security-Policy-Report-Only"]).to eq(default_csp)
+      expect(headers["content-security-policy-report-only"]).to eq(default_csp)
       # Ensure the enforcement header is NOT present
-      expect(headers["Content-Security-Policy"]).to be_nil
+      expect(headers["content-security-policy"]).to be_nil
+    end
+  end
+
+  # ====================================================================
+  # RACK 3 HEADER CASING
+  #
+  # The Rack 3 SPEC requires response header keys to be lowercase. An app that
+  # returns a plain Hash (rather than a case-insensitive Rack::Headers) must
+  # still be detected as HTML and receive every security header.
+  # ====================================================================
+
+  describe "Rack 3 header casing" do
+    let(:env) { Rack::MockRequest.env_for("http://example.com/") }
+
+    # A SPEC-conformant Rack 3 app: lowercase keys in an ordinary Hash.
+    let(:rack3_app) do
+      ->(_env) { [200, { "content-type" => "text/html" }, ["<h1>Hello!</h1>"]] }
+    end
+
+    # A Rack 2 style app, which conventionally capitalizes its header keys.
+    let(:legacy_app) do
+      ->(_env) { [200, { "Content-Type" => "text/html" }, ["<h1>Hello!</h1>"]] }
+    end
+
+    def headers_from(inner_app, options = {})
+      described_class.new(inner_app, options).call(env)[1]
+    end
+
+    it "injects every default header when the app uses lowercase keys" do
+      headers = headers_from(rack3_app)
+
+      default_headers.each do |header, value|
+        expect(headers[header.downcase]).to eq(value), "Expected '#{header.downcase}' to be injected"
+      end
+    end
+
+    it "injects the CSP when the app uses lowercase keys" do
+      expect(headers_from(rack3_app)["content-security-policy"]).to eq(default_csp)
+    end
+
+    it "emits only lowercase header keys" do
+      keys = headers_from(rack3_app).keys
+
+      expect(keys).to all(match(/\A[^A-Z]*\z/))
+    end
+
+    it "still detects HTML from a capitalized Rack 2 Content-Type" do
+      headers = headers_from(legacy_app)
+
+      expect(headers["strict-transport-security"]).to eq(default_headers["Strict-Transport-Security"])
+    end
+
+    it "does not emit a header twice when the app already set it with different casing" do
+      app_with_own_header = lambda do |_env|
+        [200, { "content-type" => "text/html", "X-Frame-Options" => "SAMEORIGIN" }, ["<h1>Hello!</h1>"]]
+      end
+
+      headers = headers_from(app_with_own_header)
+
+      expect(headers.keys.select { |key| key.downcase == "x-frame-options" }).to eq(["x-frame-options"])
+      expect(headers["x-frame-options"]).to eq("DENY")
+    end
+
+    it "normalizes a custom header option rather than emitting it alongside the default" do
+      headers = headers_from(rack3_app, "X-Frame-Options" => "SAMEORIGIN")
+
+      expect(headers.keys.select { |key| key.downcase == "x-frame-options" }).to eq(["x-frame-options"])
+      expect(headers["x-frame-options"]).to eq("SAMEORIGIN")
+    end
+
+    it "produces a response that satisfies Rack::Lint" do
+      linted = Rack::Lint.new(described_class.new(rack3_app))
+
+      expect { linted.call(env) }.not_to raise_error
     end
   end
 end

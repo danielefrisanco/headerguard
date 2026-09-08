@@ -16,7 +16,11 @@ Gem::Specification.new do |spec|
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|
-      (f == spec.full_name + ".gem") ||
+      # Never package build artifacts or internal planning docs. Matching any
+      # ".gem" (not just the current version's) keeps a stray local build from
+      # being bundled into a release.
+      f.end_with?(".gem") ||
+        f == "PLAN.md" ||
         f.match(%r{\A(?:(?:test|spec|features)/|\.(?:git|travis|circleci)|appveyor)})
     end
   end

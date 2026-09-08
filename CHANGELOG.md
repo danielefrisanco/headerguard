@@ -36,6 +36,13 @@ See `PLAN.md` for the remaining remediation work (P1–P5), targeted at 0.2.0.
   Passing `"x-frame-options" => "SAMEORIGIN"` previously appended a second header
   instead of replacing the default.
 
+- **Previously released `.gem` files are no longer packaged inside new releases.**
+  `header_guard-0.1.0.gem` and `header_guard-0.1.1.gem` were tracked in git, and the
+  gemspec filtered only the *current* version's file, so each release bundled every
+  earlier one — 0.1.1 was 16KB largely because it contained 0.1.0. The artifacts are now
+  untracked and gitignored, and the gemspec rejects any `.gem` file rather than one
+  specific name. `PLAN.md` is excluded from the package as well.
+
 ### Changed
 
 - Injected response header names are now lowercase. This is invisible over HTTP, where

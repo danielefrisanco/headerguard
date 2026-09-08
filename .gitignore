@@ -1,0 +1,13 @@
+# Built gem artifacts — these must never be committed, or each release
+# packages every previous release inside itself.
+*.gem
+/pkg/
+
+# Bundler
+/.bundle/
+
+# Test and build output
+/coverage/
+/tmp/
+/doc/
+/.yardoc

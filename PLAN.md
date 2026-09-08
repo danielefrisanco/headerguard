@@ -111,14 +111,14 @@ the responses that need them most:
 
 ---
 
-## P4 — Packaging and supply chain
+## P4 — Packaging and supply chain (partially done)
 
-- [ ] **Delete the committed `.gem` artifacts** (`header_guard-0.1.0.gem`,
-      `header_guard-0.1.1.gem`). They are tracked in git and ship *inside* each new release —
-      the gemspec rejects only the current version's file. It compounds: 0.1.0 is 9KB, 0.1.1 is
-      16KB because it already contains 0.1.0.
-- [ ] **Add `.gitignore`** (none exists): `*.gem`, `/pkg/`, `/.bundle/`, `Gemfile.lock` if
-      preferred for a library.
+- [x] **Delete the committed `.gem` artifacts** — done in 0.1.2. Untracked via
+      `git rm --cached` (kept on disk locally). The gemspec now rejects any file ending in
+      `.gem` rather than only the current version's name, so a stray local build cannot be
+      bundled into a release. `PLAN.md` is excluded from the package too.
+- [x] **Add `.gitignore`** — done in 0.1.2: `*.gem`, `/pkg/`, `/.bundle/`, `/coverage/`,
+      `/tmp/`, `/doc/`, `/.yardoc`. `Gemfile.lock` left tracked, as it has been historically.
 - [ ] **Add `rubygems_mfa_required` to gemspec metadata** — standard for any published gem,
       doubly so for a security gem.
 - [ ] Add `source_code_uri` and `changelog_uri` metadata.

@@ -20,11 +20,19 @@ jobs:
     env:
       BUNDLE_GEMFILE: ${{ github.workspace }}/gemfiles/rack_${{ matrix.rack }}.gemfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-      - name: Show resolved Rack version
-        run: bundle exec ruby -e 'require "rack"; puts "rack #{Rack.release}"'
-      - run: bundle exec rspec
+
+      # Block scalar on purpose: in a plain `run:` value a " #" starts a YAML
+      # comment, which truncated this line at the interpolation and broke the
+      # shell quoting.
+      - name: Report resolved versions
+        run: |
+          bundle exec ruby -e 'require "rack"; puts "Ruby #{RUBY_VERSION}, Rack #{Rack.release}"'
+
+      - name: Run specs
+        run: bundle exec rspec

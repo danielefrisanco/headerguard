@@ -49,8 +49,12 @@ Targeting 0.2.0. See `PLAN.md` for the remaining remediation work (P2–P5).
   applications that depended on the narrower scope, not a recommended configuration.
 
 - **Four new default headers:**
-  - `Cross-Origin-Opener-Policy: same-origin` — isolates the browsing context from
-    cross-origin windows, mitigating XS-Leaks and Spectre-class attacks.
+  - `Cross-Origin-Opener-Policy: same-origin-allow-popups` — isolates the browsing
+    context from cross-origin openers, mitigating XS-Leaks and Spectre-class attacks,
+    while still allowing popups the site itself opens (OAuth/OIDC providers in popup
+    mode) to talk back via `window.opener`. Chosen over the stricter `same-origin`
+    because the gem targets SSO applications, where popup-based client SDKs are common;
+    the only protection given up is against windows the site's own code chose to open.
   - `Cross-Origin-Resource-Policy: same-origin` — stops other origins embedding this
     site's resources via no-cors requests.
   - `X-Permitted-Cross-Domain-Policies: none` — forbids Flash/Acrobat cross-domain
@@ -80,11 +84,11 @@ applications will need to opt back into behaviour they relied on.
 - **Third-party fonts and stylesheets are now blocked by the default CSP.** Add the
   specific origins you use (e.g. `https://fonts.googleapis.com`) to `style-src` and
   `font-src` rather than reinstating `https:`.
-- **Popup-based OAuth/OIDC flows will break under the new `Cross-Origin-Opener-Policy`.**
-  `same-origin` severs `window.opener` across origins. Redirect-based flows are
-  unaffected. If your site *opens* the popup, override with `same-origin-allow-popups`;
-  if your site *is* the popup (you are the identity provider), override with
-  `unsafe-none`.
+- **Identity providers serving popup-based flows need to override
+  `Cross-Origin-Opener-Policy`.** The default `same-origin-allow-popups` keeps flows
+  where *your* site opens the popup working, but if your site *is* the popup (you are
+  the identity provider), the page the client opens must keep `window.opener`, which
+  requires `unsafe-none`. Redirect-based flows are unaffected either way.
 - **Assets embedded by other sites will be blocked by `Cross-Origin-Resource-Policy`.**
   If your app serves images, scripts or fonts meant to load on other origins, override
   with `cross-origin`.

@@ -94,9 +94,13 @@ Suite: 26 examples, 0 failures.
       deliberate opt-in and steers toward nonces.
 - [x] Narrow `font-src` — done, now `'self'`.
 - [x] **Add modern headers** — done, all four:
-      - `Cross-Origin-Opener-Policy: same-origin` — README documents the two overrides needed
-        for popup-based auth flows (`same-origin-allow-popups` if you open the popup,
-        `unsafe-none` if you are the popup).
+      - `Cross-Origin-Opener-Policy: same-origin-allow-popups` — chosen over `same-origin`
+        after discussion: the gem targets SSO apps where popup-based client SDKs are common,
+        and `allow-popups` still blocks anyone from opening *this* site and keeping a
+        handle. README documents `unsafe-none` for identity providers (you *are* the popup)
+        and `same-origin` for the strictest isolation. Per-path overrides, which would let
+        an IdP relax only its popup page, are deferred to 0.3.0 alongside P3 — see the note
+        under P3.
       - `Cross-Origin-Resource-Policy: same-origin`
       - `X-Permitted-Cross-Domain-Policies: none`
       - `Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(),
@@ -129,6 +133,13 @@ failures.
       than omitting it. Make `nil` delete the header, and fix the README example.
 - [ ] Consider a structured CSP builder (hash of directive => sources) instead of raw strings,
       so directives can be merged rather than wholesale replaced.
+- [ ] **Path-scoped overrides** (`path_overrides: { %r{\A/auth/} => { ... } }`), so an identity
+      provider can set `Cross-Origin-Opener-Policy: unsafe-none` on just its popup page, or an
+      embeddable widget can relax `X-Frame-Options`/CORP on one route, without weakening the
+      rest of the site. Value is a nested options hash with the same shape as the top level.
+      **Must reject `Strict-Transport-Security`** inside overrides: HSTS is host-scoped, not
+      per-document, so a per-path `max-age=0` would wipe HSTS for the whole host. Belongs with
+      the option validation above, which is what makes an override map safe.
 
 ---
 

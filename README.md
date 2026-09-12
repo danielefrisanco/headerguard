@@ -90,7 +90,7 @@ Any key/value pair passed to the middleware that matches a standard header will 
 | `X-Content-Type-Options` | `nosniff` | Prevents browser MIME-sniffing. |
 | `X-Frame-Options` | `DENY` | Prevents clickjacking (set to `SAMEORIGIN` to allow framing on the same site). |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Controls referrer information sent with requests. |
-| `Cross-Origin-Opener-Policy` | `same-origin` | Isolates the browsing context from cross-origin windows (XS-Leaks, Spectre). |
+| `Cross-Origin-Opener-Policy` | `same-origin-allow-popups` | Isolates the browsing context from cross-origin openers (XS-Leaks, Spectre) while allowing popups you open. |
 | `Cross-Origin-Resource-Policy` | `same-origin` | Stops other origins embedding your resources via no-cors requests. |
 | `X-Permitted-Cross-Domain-Policies` | `none` | Forbids Flash/Acrobat cross-domain policy files. |
 | `Permissions-Policy` | `accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()` | Denies sensitive device features unless enabled. |
@@ -110,13 +110,19 @@ config.middleware.use HeaderGuard::Middleware,
   "Strict-Transport-Security" => "max-age=31536000; includeSubDomains; preload"
 ```
 
-**Popup-based auth flows and `Cross-Origin-Opener-Policy`.** `same-origin` severs `window.opener` across origins, which breaks OAuth/OIDC flows that open the identity provider in a popup and talk back via `postMessage`. Redirect-based flows are unaffected. If you use popups:
+**`Cross-Origin-Opener-Policy` and popup-based auth.** The default `same-origin-allow-popups` means no cross-origin page can open your site and keep a handle on it, while popups *your* site opens — an OAuth/OIDC provider in popup mode — can still talk back via `window.opener`. Redirect-based flows are unaffected either way.
+
+Two situations need a different value:
 
 ```ruby
-# Your site opens the popup:
-config.middleware.use HeaderGuard::Middleware, "Cross-Origin-Opener-Policy" => "same-origin-allow-popups"
-# Your site *is* the popup (you are the identity provider):
+# Your site *is* the popup (you are the identity provider): the page the client
+# opens must keep window.opener, which requires disabling isolation on it.
 config.middleware.use HeaderGuard::Middleware, "Cross-Origin-Opener-Policy" => "unsafe-none"
+
+# You open no popups and want the strictest isolation available (also the
+# value required, together with COEP, for cross-origin isolated features such
+# as SharedArrayBuffer):
+config.middleware.use HeaderGuard::Middleware, "Cross-Origin-Opener-Policy" => "same-origin"
 ```
 
 **Assets embedded by other sites and `Cross-Origin-Resource-Policy`.** `same-origin` prevents other origins from loading your images, scripts or fonts. If your app serves assets meant to be embedded elsewhere, set it to `cross-origin`.

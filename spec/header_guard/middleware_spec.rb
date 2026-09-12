@@ -287,8 +287,15 @@ RSpec.describe HeaderGuard::Middleware do
     end
 
     describe "cross-origin isolation headers" do
-      it "sets Cross-Origin-Opener-Policy to same-origin" do
-        expect(default_headers["Cross-Origin-Opener-Policy"]).to eq("same-origin")
+      it "sets Cross-Origin-Opener-Policy to same-origin-allow-popups" do
+        # Isolates this site from cross-origin openers, but keeps popups the
+        # site itself opens (OAuth/OIDC providers in popup mode) working.
+        # The stricter "same-origin" would break those out of the box.
+        expect(default_headers["Cross-Origin-Opener-Policy"]).to eq("same-origin-allow-popups")
+      end
+
+      it "never leaves Cross-Origin-Opener-Policy fully disabled" do
+        expect(default_headers["Cross-Origin-Opener-Policy"]).not_to eq("unsafe-none")
       end
 
       it "sets Cross-Origin-Resource-Policy to same-origin" do

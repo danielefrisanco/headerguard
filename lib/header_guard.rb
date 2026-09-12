@@ -26,13 +26,19 @@ module HeaderGuard
     # cross-origin; a good balance of security and functionality.
     "Referrer-Policy"                    => "strict-origin-when-cross-origin",
     # Put this site in its own browsing context group, so a cross-origin window
-    # that opens it (or that it opens) cannot hold a reference to it. Mitigates
-    # XS-Leaks and Spectre-class attacks.
+    # that opens it cannot hold a reference to it. Mitigates XS-Leaks and
+    # Spectre-class attacks.
     #
-    # Popup-based auth flows that rely on `window.opener` need
-    # "same-origin-allow-popups" (this site opens the popup) or "unsafe-none"
-    # (this site *is* the popup). Redirect-based flows are unaffected.
-    "Cross-Origin-Opener-Policy"         => "same-origin",
+    # "same-origin-allow-popups" rather than the stricter "same-origin": it
+    # keeps the protection that matters (nobody can open *this* site and keep a
+    # handle on it) while still letting popups this site opens -- an OAuth/OIDC
+    # provider in popup mode, say -- talk back via `window.opener`. The only
+    # thing given up is isolation from windows this site's own code chose to
+    # open, and `noopener` covers that where it matters.
+    #
+    # If this site *is* the popup (you are the identity provider), the page the
+    # client opens needs "unsafe-none". Redirect-based flows are unaffected.
+    "Cross-Origin-Opener-Policy"         => "same-origin-allow-popups",
     # Prevent other origins from embedding this site's resources (images,
     # scripts, fonts) via no-cors requests. Override with "cross-origin" on
     # assets that are meant to be embedded elsewhere.

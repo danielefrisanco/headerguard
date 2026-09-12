@@ -8,6 +8,9 @@ HeaderGuard is designed to automatically inject essential security headers like 
 Installation
 ------------
 
+HeaderGuard requires Ruby 2.6.6 or later and works with both Rack 2 and Rack 3
+(the test suite passes on both). Rails applications on either Rack major are supported.
+
 Add this line to your application's Gemfile:
 
 ```ruby

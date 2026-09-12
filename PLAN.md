@@ -154,7 +154,7 @@ policy), so overrides inherit everything they don't mention and are validated id
 
 ---
 
-## P4 — Packaging and supply chain (partially done)
+## P4 — Packaging and supply chain ✅ DONE (0.3.1)
 
 - [x] **Delete the committed `.gem` artifacts** — done in 0.1.2. Untracked via
       `git rm --cached` (kept on disk locally). The gemspec now rejects any file ending in
@@ -162,11 +162,23 @@ policy), so overrides inherit everything they don't mention and are validated id
       bundled into a release. `PLAN.md` is excluded from the package too.
 - [x] **Add `.gitignore`** — done in 0.1.2: `*.gem`, `/pkg/`, `/.bundle/`, `/coverage/`,
       `/tmp/`, `/doc/`, `/.yardoc`. `Gemfile.lock` left tracked, as it has been historically.
-- [ ] **Add `rubygems_mfa_required` to gemspec metadata** — standard for any published gem,
-      doubly so for a security gem.
-- [ ] Add `source_code_uri` and `changelog_uri` metadata.
-- [ ] **Relax the rack pin.** `rack ~> 3.0` locks out Rack 2 and older Rails; once casing is
-      handled correctly, `>= 2.0` supports both.
+- [x] **Add `rubygems_mfa_required` to gemspec metadata** — done in 0.3.1. Note: the
+      RubyGems account doing `gem push` must have MFA enabled or the push is rejected.
+- [x] Add `source_code_uri` and `changelog_uri` metadata — done in 0.3.1, plus
+      `homepage_uri` and `bug_tracker_uri`.
+- [x] **Relax the rack pin.** Done in 0.3.1 as `>= 2.0, < 4`. Verified, not assumed: the
+      full suite (88 examples, including the `Rack::Lint` case) passes under Rack 2.2.24,
+      where `Rack::Headers` does not even exist — confirming the middleware calls no Rack
+      API and only handles the response triplet. The `< 4` bound is deliberate (see the
+      gemspec comment): fail to resolve on an unverified major rather than silently inject
+      nothing, which is what P0 was. The `rack-test` dev dependency was bounded to `~> 2.0`
+      to silence the open-ended-dependency build warning.
+
+### Resolved in 0.3.1
+
+Gemspec only, no code changes. The Rack 2 run was done by hand with a scratch Gemfile
+pinning `rack ~> 2.2`; making it repeatable is the CI matrix in P5, which should also add a
+`RACK_VERSION` switch to the project Gemfile.
 
 ---
 
@@ -191,4 +203,7 @@ policy), so overrides inherit everything they don't mention and are validated id
    and a detailed upgrade section in the CHANGELOG.
 3. **0.3.0** — P3 ✅ done. Additive (validation, `nil` removal, `path_overrides`), but
    previously-accepted-yet-wrong configurations now raise at boot, so a minor bump.
-4. P4/P5 can land alongside any of the above.
+4. **0.3.1** — P4 ✅ done. Packaging only; patch bump. Widening the Rack constraint adds
+   no API and changes no behaviour, and `rubygems_mfa_required` affects only the publisher.
+5. P5 needs no gem release of its own — CI, Rakefile and spec scaffolding are not shipped in
+   the package. Only the gemspec author fix and the README link would reach users.

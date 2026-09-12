@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-See `PLAN.md` for the remaining work (P4–P5).
+Targeting 0.3.1. See `PLAN.md` for the remaining work (P5).
+
+### Changed
+
+- **Rack 2 is supported.** The runtime dependency is relaxed from `rack ~> 3.0` to
+  `rack >= 2.0, < 4`. The middleware has handled both Rack 2 (mixed-case) and Rack 3
+  (lowercase) header conventions since 0.1.2, but the gemspec still refused to install
+  alongside Rack 2, locking out Rails 6 and 7.0 applications for no reason.
+  The full suite passes on Rack 2.2 and Rack 3.2. The `< 4` upper bound is deliberate:
+  a future Rack major could change the response contract, and a security gem should
+  fail to resolve rather than silently inject nothing.
+
+- **Releases now require multi-factor authentication on RubyGems.**
+  `rubygems_mfa_required` is set in the gemspec metadata, so a stolen API key alone can
+  no longer publish a version of this gem.
+
+- Gemspec metadata gains `homepage_uri`, `source_code_uri`, `changelog_uri` and
+  `bug_tracker_uri`, so the RubyGems page links to the source and this changelog. The
+  `rack-test` development dependency is bounded to `~> 2.0`.
 
 ## [0.3.0] - 2026-09-12
 

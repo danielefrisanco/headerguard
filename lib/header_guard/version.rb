@@ -2,5 +2,5 @@
 
 module HeaderGuard
   # The current version of the HeaderGuard gem.
-  VERSION = "0.3.0"
+  VERSION = "0.3.1"
 end

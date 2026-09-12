@@ -84,24 +84,35 @@ Suite: 26 examples, 0 failures.
 
 ---
 
-## P2 — Default policy hardening
+## P2 — Default policy hardening ✅ DONE (0.2.0)
 
-- [ ] **Drop `preload` from the default HSTS** (`lib/header_guard.rb:11`). Preload is an opt-in
-      commitment binding the apex domain *and all subdomains* to HTTPS, and removal from the
-      list takes months. Too sharp to acquire merely by adding the middleware. Keep
-      `max-age=31536000; includeSubDomains`; document `preload` as an explicit opt-in.
-- [ ] **Remove `block-all-mixed-content`** (`lib/header_guard.rb:39`) — deprecated and removed
-      from CSP3; `upgrade-insecure-requests` already covers it.
-- [ ] **Tighten `style-src`** (`lib/header_guard.rb:37`). `'self' 'unsafe-inline' https:` allows
-      inline styles plus any HTTPS origin, enabling CSS-based injection and data exfiltration —
-      weak for something billed as a "secure baseline". Consider `'self'` with `'unsafe-inline'`
-      documented as an opt-in.
-- [ ] Narrow `font-src 'self' https: data:` for the same reason.
-- [ ] **Add modern headers** to the defaults:
-      - `Cross-Origin-Opener-Policy: same-origin`
+- [x] **Drop `preload` from the default HSTS** — done. Default is now
+      `max-age=31536000; includeSubDomains`; README documents `preload` as an explicit opt-in
+      with a link to hstspreload.org.
+- [x] **Remove `block-all-mixed-content`** — done. `upgrade-insecure-requests` remains.
+- [x] **Tighten `style-src`** — done, now `'self'`. README documents `'unsafe-inline'` as a
+      deliberate opt-in and steers toward nonces.
+- [x] Narrow `font-src` — done, now `'self'`.
+- [x] **Add modern headers** — done, all four:
+      - `Cross-Origin-Opener-Policy: same-origin` — README documents the two overrides needed
+        for popup-based auth flows (`same-origin-allow-popups` if you open the popup,
+        `unsafe-none` if you are the popup).
       - `Cross-Origin-Resource-Policy: same-origin`
       - `X-Permitted-Cross-Domain-Policies: none`
-      - `Permissions-Policy` (a conservative deny list)
+      - `Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(),
+        magnetometer=(), microphone=(), payment=(), usb=()`
+
+### Resolved in 0.2.0
+
+`lib/header_guard.rb` rewritten: `DEFAULT_HEADERS` grows from four to eight entries, each
+with a comment explaining the choice and, where the value can break something, the
+override to use. `DEFAULT_CSP` is built from an array joined with `"; "`, so each directive
+is on its own line. Thirteen "Default Policy" tests pin every decision — no `preload`, no
+`'unsafe-inline'`, no `https:`, no `block-all-mixed-content`, each new header's value, and
+well-formedness of both the CSP and the Permissions-Policy. README header table updated to
+eight rows, with sections on HSTS preload, COOP and popup auth, and CORP and embedded
+assets. CHANGELOG carries a detailed "Upgrading from 0.1.x" list. Suite: 39 examples, 0
+failures.
 
 ---
 
@@ -153,7 +164,8 @@ Suite: 26 examples, 0 failures.
 
 1. ~~**0.1.2** — P0 only (the Rack 3 fix) plus its regression tests.~~ **Done.** Patch bump,
    per semver: a bug fix restoring documented behaviour, no API additions.
-2. **0.2.0** — P1 ✅ done + P2 (pending). These change which headers appear on which
-   responses, so they are breaking-ish and deserve a minor bump and CHANGELOG notes.
+2. **0.2.0** — P1 ✅ + P2 ✅ done, ready to release. These change which headers appear on
+   which responses and what the defaults are, so they are breaking-ish and got a minor bump
+   and a detailed upgrade section in the CHANGELOG.
 3. **0.3.0** — P3 API work.
 4. P4/P5 can land alongside any of the above.

@@ -82,14 +82,18 @@ When integrating `HeaderGuard` into your project, you can pass an options hash t
 
 #### 1\. Overriding Standard Headers
 
-Any key/value pair passed to the middleware that matches a standard header will override the default value.
+Any key/value pair passed to the middleware that matches a standard header will override the default value. Header names are matched case-insensitively.
 
-| Header | Default Value | Purpose | 
- | ----- | ----- | ----- | 
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` | Enforces HTTPS usage. | 
-| `X-Content-Type-Options` | `nosniff` | Prevents browser MIME-sniffing. | 
-| `X-Frame-Options` | `DENY` | Prevents clickjacking (set to SAMEORIGIN to allow framing on the same site). | 
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Controls referrer information sent with requests. | 
+| Header | Default Value | Purpose |
+| ----- | ----- | ----- |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Enforces HTTPS usage. |
+| `X-Content-Type-Options` | `nosniff` | Prevents browser MIME-sniffing. |
+| `X-Frame-Options` | `DENY` | Prevents clickjacking (set to `SAMEORIGIN` to allow framing on the same site). |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Controls referrer information sent with requests. |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Isolates the browsing context from cross-origin windows (XS-Leaks, Spectre). |
+| `Cross-Origin-Resource-Policy` | `same-origin` | Stops other origins embedding your resources via no-cors requests. |
+| `X-Permitted-Cross-Domain-Policies` | `none` | Forbids Flash/Acrobat cross-domain policy files. |
+| `Permissions-Policy` | `accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()` | Denies sensitive device features unless enabled. |
 
 **Example: Overriding X-Frame-Options and Referrer-Policy:**
 ```ruby
@@ -98,13 +102,48 @@ config.middleware.use HeaderGuard::Middleware,
   "X-Frame-Options" => "SAMEORIGIN",
   "Referrer-Policy" => "no-referrer"
 ```
-#### 2\. Custom Content Security Policy (CSP)
 
-You can define a custom CSP string to replace the secure default provided by HeaderGuard.
+**Opting into HSTS preload.** The default deliberately omits `preload`. It is the signal for the [browser HSTS preload list](https://hstspreload.org/), which hard-codes your apex domain *and every subdomain* as HTTPS-only inside the browser, and removal takes months. Add it only once you've confirmed every subdomain serves HTTPS:
 
 ```ruby
-custom_csp = "default-src 'self'; script-src 'self' [https://trusted.cdn.com](https://trusted.cdn.com);"
+config.middleware.use HeaderGuard::Middleware,
+  "Strict-Transport-Security" => "max-age=31536000; includeSubDomains; preload"
+```
+
+**Popup-based auth flows and `Cross-Origin-Opener-Policy`.** `same-origin` severs `window.opener` across origins, which breaks OAuth/OIDC flows that open the identity provider in a popup and talk back via `postMessage`. Redirect-based flows are unaffected. If you use popups:
+
+```ruby
+# Your site opens the popup:
+config.middleware.use HeaderGuard::Middleware, "Cross-Origin-Opener-Policy" => "same-origin-allow-popups"
+# Your site *is* the popup (you are the identity provider):
+config.middleware.use HeaderGuard::Middleware, "Cross-Origin-Opener-Policy" => "unsafe-none"
+```
+
+**Assets embedded by other sites and `Cross-Origin-Resource-Policy`.** `same-origin` prevents other origins from loading your images, scripts or fonts. If your app serves assets meant to be embedded elsewhere, set it to `cross-origin`.
+#### 2\. Custom Content Security Policy (CSP)
+
+The default CSP is a strict same-origin baseline:
+
+```
+default-src 'self'; base-uri 'self'; font-src 'self'; form-action 'self';
+frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self';
+upgrade-insecure-requests
+```
+
+Resources may load only from your own origin; plugins, `<base>` tags and object embeds are blocked; inline scripts and styles are not permitted. Most real applications will need to extend this. You can define a custom CSP string to replace the default:
+
+```ruby
+custom_csp = "default-src 'self'; script-src 'self' https://trusted.cdn.com;"
 use HeaderGuard::Middleware, content_security_policy: custom_csp
+
+```
+
+When extending the policy, add the specific origins you need rather than broad sources. `https:` as a source allows content from *any* HTTPS origin, and `'unsafe-inline'` allows any inline style or script — both let an attacker who can inject markup load or run content of their choosing. If you must allow inline styles (many CSS-in-JS libraries need it), do so knowingly:
+
+```ruby
+# Allowing inline styles, explicitly.
+use HeaderGuard::Middleware,
+  content_security_policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'"
 
 ```
 #### 3\. Report-Only Mode
@@ -134,7 +173,7 @@ HeaderGuard hooks into the Rack request lifecycle and, on every response passing
 
 1.  **Header Merging:** It takes the default security headers and merges them with any custom headers supplied during initialization, ensuring user configuration takes precedence.
     
-2.  **Standard Header Injection:** It injects `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` on **every** response, regardless of status code or content type. HSTS matters most on the HTTP→HTTPS redirect, and `nosniff` exists precisely to protect non-HTML bodies such as JSON.
+2.  **Standard Header Injection:** It injects every header in the table above (HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, the cross-origin isolation headers and `Permissions-Policy`) on **every** response, regardless of status code or content type. HSTS matters most on the HTTP→HTTPS redirect, and `nosniff` exists precisely to protect non-HTML bodies such as JSON.
     
 3.  **CSP Injection:** It injects the configured Content Security Policy — using either the standard enforcement header or the Report-Only header — on every response whose `Content-Type` is `text/html` or `application/xhtml+xml`, **including error pages**. Error pages routinely reflect user input and are a classic XSS surface, so they need a policy at least as much as a 200 does. Non-HTML responses do not receive a CSP, as it governs documents only.
     

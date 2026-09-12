@@ -227,6 +227,97 @@ RSpec.describe HeaderGuard::Middleware do
   end
 
   # ====================================================================
+  # DEFAULT POLICY TESTS
+  #
+  # These pin the hardening decisions behind the defaults, so a future edit
+  # cannot quietly reintroduce a broad source or an irreversible commitment.
+  # ====================================================================
+
+  describe "Default Policy" do
+    let(:hsts) { default_headers["Strict-Transport-Security"] }
+    let(:csp_directives) { default_csp.split("; ") }
+
+    describe "Strict-Transport-Security" do
+      it "enforces HTTPS for one year including subdomains" do
+        expect(hsts).to include("max-age=31536000")
+        expect(hsts).to include("includeSubDomains")
+      end
+
+      it "does not opt into the browser preload list" do
+        # Preload binds the apex domain and every subdomain to HTTPS inside
+        # the browser itself and takes months to reverse. It must be an
+        # explicit choice, not a side effect of adding a middleware.
+        expect(hsts).not_to include("preload")
+      end
+    end
+
+    describe "Content-Security-Policy" do
+      it "is a well-formed directive list with no empty entries or trailing separator" do
+        expect(csp_directives).to all(match(/\A[a-z-]+( \S.*)?\z/))
+        expect(default_csp).not_to end_with(";")
+      end
+
+      it "restricts scripts, styles and fonts to the same origin only" do
+        %w[script-src style-src font-src].each do |directive|
+          expect(csp_directives).to include("#{directive} 'self'")
+        end
+      end
+
+      it "does not allow inline styles or scripts" do
+        expect(default_csp).not_to include("'unsafe-inline'")
+        expect(default_csp).not_to include("'unsafe-eval'")
+      end
+
+      it "does not allow arbitrary HTTPS origins" do
+        # `https:` as a source lets an attacker who can inject markup load
+        # content from any origin they control.
+        expect(default_csp).not_to match(/\bhttps:/)
+      end
+
+      it "blocks plugins, base tags and framing" do
+        expect(csp_directives).to include("object-src 'none'")
+        expect(csp_directives).to include("base-uri 'self'")
+        expect(csp_directives).to include("frame-ancestors 'none'")
+      end
+
+      it "upgrades insecure requests without the deprecated block-all-mixed-content" do
+        expect(csp_directives).to include("upgrade-insecure-requests")
+        expect(default_csp).not_to include("block-all-mixed-content")
+      end
+    end
+
+    describe "cross-origin isolation headers" do
+      it "sets Cross-Origin-Opener-Policy to same-origin" do
+        expect(default_headers["Cross-Origin-Opener-Policy"]).to eq("same-origin")
+      end
+
+      it "sets Cross-Origin-Resource-Policy to same-origin" do
+        expect(default_headers["Cross-Origin-Resource-Policy"]).to eq("same-origin")
+      end
+
+      it "forbids cross-domain policy files" do
+        expect(default_headers["X-Permitted-Cross-Domain-Policies"]).to eq("none")
+      end
+    end
+
+    describe "Permissions-Policy" do
+      let(:policy) { default_headers["Permissions-Policy"] }
+
+      it "denies sensitive device features by default" do
+        %w[camera microphone geolocation payment usb].each do |feature|
+          expect(policy).to include("#{feature}=()"), "Expected '#{feature}' to be denied"
+        end
+      end
+
+      it "is a well-formed comma-separated feature list" do
+        policy.split(", ").each do |entry|
+          expect(entry).to match(/\A[a-z-]+=\(.*\)\z/)
+        end
+      end
+    end
+  end
+
+  # ====================================================================
   # RACK 3 HEADER CASING
   #
   # The Rack 3 SPEC requires response header keys to be lowercase. An app that

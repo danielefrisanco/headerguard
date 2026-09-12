@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-See `PLAN.md` for the remaining work (P5).
+No gem release planned for these; nothing below ships in the package except the
+gemspec author fix.
+
+### Added
+
+- CI on GitHub Actions: the suite runs on Ruby 3.1–3.4 against both Rack 2 and Rack 3,
+  using `gemfiles/rack_2.gemfile` and `gemfiles/rack_3.gemfile`, which can also be used
+  locally with `BUNDLE_GEMFILE`. Rack 2 support, added in 0.3.1, is now tested on every
+  push rather than by hand.
+- `Rakefile` with `spec` as the default task; `spec/spec_helper.rb` and `.rspec`
+  (random order, no monkey-patched `describe`).
+
+### Changed
+
+- Gemspec `authors` now lists the maintainer only.
+- `Gemfile` reduced to `gemspec`; the development dependencies it duplicated are declared
+  once, in the gemspec. `rake` added as a development dependency.
 
 ## [0.3.1] - 2026-09-12
 

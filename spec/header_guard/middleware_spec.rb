@@ -1,11 +1,5 @@
 # frozen_string_literal: true
 
-# Require the necessary components for testing
-require "rack/test"
-require "rack"
-require "header_guard"
-require "header_guard/middleware"
-
 # Mock Rack application to test the middleware against.
 # Returns a standard 2xx HTML response; other statuses and content types are
 # exercised with inline lambdas in the "Response Scope" tests below.

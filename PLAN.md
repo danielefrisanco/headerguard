@@ -182,15 +182,36 @@ pinning `rack ~> 2.2`; making it repeatable is the CI matrix in P5, which should
 
 ---
 
-## P5 — Project hygiene
+## P5 — Project hygiene ✅ DONE (unreleased; no gem release needed)
 
-- [ ] Add `CHANGELOG.md` — 0.1.2 is bumped in the working tree with no record of what changed.
-- [ ] Add CI (GitHub Actions): run RSpec against Ruby 3.x and both Rack 2 and Rack 3.
-- [ ] Add a `Rakefile` with a default `spec` task.
-- [ ] Add `spec/spec_helper.rb` and `.rspec`.
-- [ ] Fix the gemspec author list (`header_guard.gemspec:8` credits "Gemini AI").
-- [ ] README: fix the broken nested markdown link at line 106
-      (`[https://trusted.cdn.com](https://trusted.cdn.com)` inside a code block).
+- [x] Add `CHANGELOG.md` — done in 0.1.2, Keep a Changelog format with compare links.
+- [x] Add CI (GitHub Actions) — done. `.github/workflows/ci.yml` runs the suite on
+      Ruby 3.1–3.4 × Rack 2/3 (eight jobs, `fail-fast: false`). Each Rack major has its
+      own gemfile under `gemfiles/`, selected with `BUNDLE_GEMFILE`; their lockfiles are
+      gitignored so CI resolves the newest matching Rack. The job prints the resolved Rack
+      version so a matrix cell can't silently test the wrong major. Ruby 2.6–3.0 are not in
+      the matrix although the gemspec allows them; add them if a user reports a problem.
+- [x] Add a `Rakefile` with a default `spec` task — done (`bundler/gem_tasks` +
+      `RSpec::Core::RakeTask`).
+- [x] Add `spec/spec_helper.rb` and `.rspec` — done. Random order, `disable_monkey_patching!`,
+      `verify_partial_doubles`; the suite was already order-independent (checked with three
+      seeds before enabling). Requires moved out of the spec file into the helper.
+- [x] Fix the gemspec author list — done, maintainer only.
+- [x] README broken nested link — already fixed during the P2 README rewrite; the CSP
+      example is now a plain string. README Development section rewritten around
+      `bundle exec rake` and the per-Rack gemfiles; CI and gem-version badges added.
+
+Also: `Gemfile` reduced to `gemspec` (it duplicated the dev dependencies), `rake` added as
+a dev dependency, and the gemspec reject list extended so `Rakefile`, `.rspec`, `gemfiles/`
+and `.claude/` never enter the package. A `/release` skill (`.claude/skills/release/SKILL.md`)
+records the release procedure, including the lesson from 0.3.1: build the package once,
+at the end.
+
+### Remaining
+
+- Structured CSP builder (deferred from P3) — open design question, no user request yet.
+- Trusted publishing (OIDC from GitHub Actions) would remove the API key from releases
+  entirely. Worth doing once the release flow is stable; not started.
 
 ---
 

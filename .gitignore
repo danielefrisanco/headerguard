@@ -11,3 +11,9 @@
 /tmp/
 /doc/
 /.yardoc
+
+# RSpec's example status file (used by --only-failures)
+/spec/examples.txt
+
+# Lockfiles for the per-Rack gemfiles are resolved fresh by CI
+/gemfiles/*.lock

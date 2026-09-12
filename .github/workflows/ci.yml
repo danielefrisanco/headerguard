@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Ruby ${{ matrix.ruby }} / Rack ${{ matrix.rack }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.1", "3.2", "3.3", "3.4"]
+        rack: ["2", "3"]
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/gemfiles/rack_${{ matrix.rack }}.gemfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Show resolved Rack version
+        run: bundle exec ruby -e 'require "rack"; puts "rack #{Rack.release}"'
+      - run: bundle exec rspec

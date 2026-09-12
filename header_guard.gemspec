@@ -5,7 +5,7 @@ require_relative "lib/header_guard/version"
 Gem::Specification.new do |spec|
   spec.name          = "header_guard"
   spec.version       = HeaderGuard::VERSION
-  spec.authors       = ["Gemini AI", "Daniele Frisanco"]
+  spec.authors       = ["Daniele Frisanco"]
   spec.email         = ["daniele.frisanco@gmail.com"]
 
   spec.summary       = "A robust Rack middleware for enforcing modern HTTP security headers, including a highly configurable Content Security Policy (CSP)."
@@ -30,7 +30,8 @@ Gem::Specification.new do |spec|
       # being bundled into a release.
       f.end_with?(".gem") ||
         f == "PLAN.md" ||
-        f.match(%r{\A(?:(?:test|spec|features)/|\.(?:git|travis|circleci)|appveyor)})
+        f == "Rakefile" ||
+        f.match(%r{\A(?:(?:test|spec|features|gemfiles)/|\.(?:git|claude|rspec|travis|circleci)|appveyor)})
     end
   end
   spec.bindir        = "exe"
@@ -48,6 +49,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency "rack", ">= 2.0", "< 4"
 
   # Development dependencies
+  spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rspec", "~> 3.12"
   spec.add_development_dependency "rack-test", "~> 2.0"
 end

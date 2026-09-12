@@ -1,6 +1,9 @@
 HeaderGuard
 ===========
 
+[![CI](https://github.com/danielefrisanco/headerguard/actions/workflows/ci.yml/badge.svg)](https://github.com/danielefrisanco/headerguard/actions/workflows/ci.yml)
+[![Gem Version](https://badge.fury.io/rb/header_guard.svg)](https://rubygems.org/gems/header_guard)
+
 A robust and simple-to-use Rack middleware for enforcing modern HTTP security headers, including a highly configurable Content Security Policy (CSP).
 
 HeaderGuard is designed to automatically inject essential security headers like HSTS, X-Content-Type-Options, X-Frame-Options, and a customizable Content Security Policy, making your application significantly more resilient against XSS, clickjacking, and other common attacks.
@@ -252,34 +255,28 @@ Header names are handled case-insensitively and always written in lowercase, as 
 Development
 -----------
 
-After checking out the repository, run bundle install to install dependencies. Then, run rspec to execute the tests.
-This gem uses RSpec and Rack::Test for its testing suite.
-#### Prerequisites
-To set up the development environment, you will need:
-Ruby (version 2.6.6 or higher, as defined in the .gemspec)
-
-Bundler
-#### Setup and Testing
-1. Clone the repository:
+The suite uses RSpec and Rack::Test. You need Ruby 2.6.6 or later and Bundler.
 
 ```bash
 git clone https://github.com/danielefrisanco/headerguard
-cd header_guard
-```
-
-2. Install all development and testing dependencies:
-
-```bash
+cd headerguard
 bundle install
+bundle exec rake        # runs the suite; same as `bundle exec rspec`
 ```
 
-3. Run the test suite using RSpec:
+The middleware supports both Rack majors, and CI runs the suite against each on every
+push. To do the same locally, use the per-Rack gemfiles:
 
 ```bash
-bundle exec rspec
+BUNDLE_GEMFILE=gemfiles/rack_2.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/rack_2.gemfile bundle exec rspec
+
+BUNDLE_GEMFILE=gemfiles/rack_3.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/rack_3.gemfile bundle exec rspec
 ```
 
-(This ensures all tests, including the critical configuration override tests, are passing.)
+Examples run in random order; a failing seed is printed and can be replayed with
+`bundle exec rspec --seed N`.
 
 Contributing
 ------------

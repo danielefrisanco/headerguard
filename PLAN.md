@@ -48,7 +48,7 @@ the buggy behaviour. Suite: 17 examples, 0 failures.
 
 ---
 
-## P1 — Injection scope is too narrow for a security gem
+## P1 — Injection scope is too narrow for a security gem ✅ DONE (0.2.0)
 
 **Problem.** Headers are applied only to `2xx && text/html` (`middleware.rb:37`), which excludes
 the responses that need them most:
@@ -61,16 +61,26 @@ the responses that need them most:
   matters most.
 
 ### Tasks
-- [ ] Apply `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy` and
+- [x] Apply `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy` and
       `X-Frame-Options` **unconditionally**, on every status and content type.
-- [ ] Keep CSP scoped to HTML, but extend it to all statuses (not just 2xx) so error pages
+- [x] Keep CSP scoped to HTML, but extend it to all statuses (not just 2xx) so error pages
       are covered.
-- [ ] Add a `:html_only_headers` / `:apply_to` escape hatch if any consumer needs the old
-      narrow behaviour.
-- [ ] Tests for: 500 HTML page (CSP present), JSON 200 (nosniff present, CSP absent),
+- [x] Add an escape hatch for the old narrow behaviour — shipped as `html_only: true`.
+- [x] Tests for: 500 HTML page (CSP present), JSON 200 (nosniff present, CSP absent),
       302 redirect (HSTS present).
-- [ ] Replace the no-op test at `spec/header_guard/middleware_spec.rb:90-109` — it builds an
+- [x] Replace the no-op test at `spec/header_guard/middleware_spec.rb:90-109` — it builds an
       app, calls it, discards the result, and the comment admits it tests nothing.
+
+### Resolved in 0.2.0
+
+`call` now decides scope with two predicates: `apply_standard_headers?` (always, unless
+`html_only`) and `apply_csp?` (any HTML response, unless `html_only`). `application/xhtml+xml`
+is treated as HTML alongside `text/html`. The old "Exclusion Logic" spec section — whose
+assertions encoded the narrow behaviour — was replaced with a "Response Scope" section of
+twelve tests covering JSON 200, 302, 204 with no content-type, HTML 500, HTML 404, JSON 404,
+XHTML, report-only on error pages, and the four `html_only` legacy cases. Dead `/json` and
+`/redirect` routes were removed from the spec's `MockApp`. README "How It Works" rewritten.
+Suite: 26 examples, 0 failures.
 
 ---
 
@@ -143,7 +153,7 @@ the responses that need them most:
 
 1. ~~**0.1.2** — P0 only (the Rack 3 fix) plus its regression tests.~~ **Done.** Patch bump,
    per semver: a bug fix restoring documented behaviour, no API additions.
-2. **0.2.0** — P1 + P2. These change which headers appear on which responses, so they are
-   breaking-ish and deserve a minor bump and CHANGELOG notes.
+2. **0.2.0** — P1 ✅ done + P2 (pending). These change which headers appear on which
+   responses, so they are breaking-ish and deserve a minor bump and CHANGELOG notes.
 3. **0.3.0** — P3 API work.
 4. P4/P5 can land alongside any of the above.

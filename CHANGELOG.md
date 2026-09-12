@@ -7,7 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-See `PLAN.md` for the remaining remediation work (P1–P5), targeted at 0.2.0.
+Targeting 0.2.0. See `PLAN.md` for the remaining remediation work (P2–P5).
+
+### Changed
+
+- **Standard headers are now applied to every response.** `Strict-Transport-Security`,
+  `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` were previously
+  injected only on 2xx responses with an HTML content type, which excluded the responses
+  that need them most: JSON bodies got no `nosniff`, and the HTTP→HTTPS redirect — the
+  response where HSTS matters — got no HSTS. They now go on every response regardless
+  of status code or content type.
+
+- **The Content Security Policy is now applied to HTML responses of every status.**
+  Previously only 2xx HTML responses received a CSP, leaving 4xx/5xx error pages
+  unprotected. Error pages routinely reflect user input and are a classic XSS surface.
+  CSP remains restricted to HTML content types, as it governs documents only.
+
+- `application/xhtml+xml` is now treated as HTML for CSP purposes alongside `text/html`.
+
+### Added
+
+- `html_only: true` option, which restores the 0.1.x behaviour of injecting nothing
+  unless the response is a 2xx with an HTML content type. This is a migration aid for
+  applications that depended on the narrower scope, not a recommended configuration.
+
+### Upgrading from 0.1.x
+
+If your application sets its own value for one of the standard headers on non-HTML
+responses (for example a different `X-Frame-Options` on an API endpoint), HeaderGuard
+will now overwrite it there too, as it always has on HTML responses. Pass the desired
+value as a custom header option, or use `html_only: true` while you migrate.
 
 ## [0.1.2] - 2026-09-08
 

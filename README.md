@@ -116,18 +116,29 @@ To test a new CSP without enforcing it, set the report\_only option to true. Thi
 config.middleware.use HeaderGuard::Middleware, report_only: true
 
 ```
+#### 4\. Restricting to HTML Responses (legacy behaviour)
+
+By default HeaderGuard applies its standard headers to **every** response and the CSP to every **HTML** response, whatever the status code (see *How It Works* below). Versions before 0.2.0 injected nothing unless the response was a 2xx with an HTML content type. If you depend on that narrower behaviour, set `html_only`:
+
+```ruby
+# 0.1.x behaviour: inject only on 2xx text/html responses.
+config.middleware.use HeaderGuard::Middleware, html_only: true
+
+```
+This is a migration aid, not a recommended configuration: it leaves JSON responses without `X-Content-Type-Options`, redirects without HSTS, and error pages without a CSP.
 
 How It Works
 ------------
 
-HeaderGuard hooks into the Rack request lifecycle and performs the following actions on responses with a 2xx status code and a Content-Type of text/html:
+HeaderGuard hooks into the Rack request lifecycle and, on every response passing through it:
 
 1.  **Header Merging:** It takes the default security headers and merges them with any custom headers supplied during initialization, ensuring user configuration takes precedence.
     
-2.  **Injection:** It injects the final set of standard security headers.
+2.  **Standard Header Injection:** It injects `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` on **every** response, regardless of status code or content type. HSTS matters most on the HTTP→HTTPS redirect, and `nosniff` exists precisely to protect non-HTML bodies such as JSON.
     
-3.  **CSP Injection:** It injects the configured Content Security Policy, using either the standard enforcement header or the Report-Only header.
+3.  **CSP Injection:** It injects the configured Content Security Policy — using either the standard enforcement header or the Report-Only header — on every response whose `Content-Type` is `text/html` or `application/xhtml+xml`, **including error pages**. Error pages routinely reflect user input and are a classic XSS surface, so they need a policy at least as much as a 200 does. Non-HTML responses do not receive a CSP, as it governs documents only.
     
+Header names are handled case-insensitively and always written in lowercase, as the Rack 3 SPEC requires, so both Rack 2 and Rack 3 style applications are supported.
 
 Development
 -----------

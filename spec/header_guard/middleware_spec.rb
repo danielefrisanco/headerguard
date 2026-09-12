@@ -6,22 +6,12 @@ require "rack"
 require "header_guard"
 require "header_guard/middleware"
 
-# Mock Rack application to test the middleware against
-# This app returns a standard HTML response.
+# Mock Rack application to test the middleware against.
+# Returns a standard 2xx HTML response; other statuses and content types are
+# exercised with inline lambdas in the "Response Scope" tests below.
 class MockApp
-  def call(env)
-    # Check if the request path requires a different status or content type
-    case env["PATH_INFO"]
-    when "/json"
-      # Returns a JSON response (should not get security headers)
-      [200, { "Content-Type" => "application/json" }, ['{"message": "ok"}']]
-    when "/redirect"
-      # Returns a redirect (should not get security headers)
-      [302, { "Location" => "/new" }, ["Redirecting..."]]
-    else
-      # Default: HTML response (should get security headers)
-      [200, { "Content-Type" => "text/html" }, ["<h1>Hello!</h1>"]]
-    end
+  def call(_env)
+    [200, { "Content-Type" => "text/html" }, ["<h1>Hello!</h1>"]]
   end
 end
 
@@ -67,48 +57,122 @@ RSpec.describe HeaderGuard::Middleware do
   end
 
   # ====================================================================
-  # EXCLUSION / GUARD TESTS
+  # RESPONSE SCOPE TESTS
+  #
+  # Standard headers (HSTS, nosniff, X-Frame-Options, Referrer-Policy) apply
+  # to every response. CSP applies to every HTML response regardless of
+  # status. These are the responses that most need protection: the
+  # HTTP->HTTPS redirect for HSTS, JSON bodies for nosniff, and error pages
+  # -- which reflect user input -- for CSP.
   # ====================================================================
 
-  describe "Exclusion Logic" do
-    it "does NOT inject headers on non-HTML content (e.g., JSON API)" do
-      get "/json"
-      # Check a couple of key headers
-      expect(last_response.headers["Strict-Transport-Security"]).to be_nil
-      expect(last_response.headers["Content-Security-Policy"]).to be_nil
-      expect(last_response.headers["Content-Type"]).to include("application/json")
+  describe "Response Scope" do
+    let(:env) { Rack::MockRequest.env_for("http://example.com/") }
+
+    def headers_for(status, response_headers, options = {})
+      inner = ->(_env) { [status, response_headers, ["body"]] }
+      described_class.new(inner, options).call(env)[1]
     end
 
-    it "does NOT inject headers on redirect status codes (e.g., 302)" do
-      get "/redirect"
-      # Check the status and key headers
-      expect(last_response.status).to eq(302)
-      expect(last_response.headers["Strict-Transport-Security"]).to be_nil
-      expect(last_response.headers["Content-Security-Policy"]).to be_nil
+    def expect_standard_headers(headers)
+      default_headers.each do |header, value|
+        expect(headers[header.downcase]).to eq(value), "Expected '#{header.downcase}' to be present"
+      end
     end
 
-    it "does NOT inject headers on internal server error status codes (e.g., 500)" do
-      # Stub the MockApp to return a 500 status (or mock an app that does)
-      mock_app_500 = Class.new do
-        def call(_env)
-          [500, { "Content-Type" => "text/html" }, ["Error"]]
-        end
+    def expect_no_standard_headers(headers)
+      default_headers.each_key do |header|
+        expect(headers[header.downcase]).to be_nil, "Expected '#{header.downcase}' to be absent"
+      end
+    end
+
+    it "applies standard headers but not CSP to a JSON response" do
+      headers = headers_for(200, { "content-type" => "application/json" })
+
+      expect_standard_headers(headers)
+      expect(headers["content-security-policy"]).to be_nil
+    end
+
+    it "applies standard headers (including HSTS) to a redirect" do
+      headers = headers_for(302, { "location" => "/new" })
+
+      expect_standard_headers(headers)
+      expect(headers["content-security-policy"]).to be_nil
+    end
+
+    it "applies standard headers to a response with no content-type at all" do
+      headers = headers_for(204, {})
+
+      expect_standard_headers(headers)
+      expect(headers["content-security-policy"]).to be_nil
+    end
+
+    it "applies CSP and standard headers to an HTML 500 error page" do
+      headers = headers_for(500, { "content-type" => "text/html" })
+
+      expect_standard_headers(headers)
+      expect(headers["content-security-policy"]).to eq(default_csp)
+    end
+
+    it "applies CSP and standard headers to an HTML 404 page" do
+      headers = headers_for(404, { "content-type" => "text/html; charset=utf-8" })
+
+      expect_standard_headers(headers)
+      expect(headers["content-security-policy"]).to eq(default_csp)
+    end
+
+    it "applies standard headers but not CSP to a JSON 404" do
+      headers = headers_for(404, { "content-type" => "application/json" })
+
+      expect_standard_headers(headers)
+      expect(headers["content-security-policy"]).to be_nil
+    end
+
+    it "treats application/xhtml+xml as HTML for CSP" do
+      headers = headers_for(200, { "content-type" => "application/xhtml+xml" })
+
+      expect(headers["content-security-policy"]).to eq(default_csp)
+    end
+
+    it "uses the report-only CSP header on error pages when configured" do
+      headers = headers_for(500, { "content-type" => "text/html" }, report_only: true)
+
+      expect(headers["content-security-policy-report-only"]).to eq(default_csp)
+      expect(headers["content-security-policy"]).to be_nil
+    end
+
+    describe "html_only: true (0.1.x behaviour)" do
+      let(:legacy) { { html_only: true } }
+
+      it "still injects everything on a 2xx HTML response" do
+        headers = headers_for(200, { "content-type" => "text/html" }, legacy)
+
+        expect_standard_headers(headers)
+        expect(headers["content-security-policy"]).to eq(default_csp)
       end
 
-      Rack::Builder.new do
-        use HeaderGuard::Middleware
-        run mock_app_500.new
-      end.call({ "PATH_INFO" => "/", "REQUEST_METHOD" => "GET" })
+      it "injects nothing on a JSON response" do
+        headers = headers_for(200, { "content-type" => "application/json" }, legacy)
 
-      # Since Rack::Test doesn't easily capture the result of a manually created Rack::Builder,
-      # a more direct test is to confirm that the logic excludes responses outside 2xx.
-      # The main test focuses on the 302 case, which relies on the same status check logic.
-      # We rely on the implementation logic (200..299).include?(status) for 500 exclusion.
-      # Note: For production use, sometimes security headers *are* desired on error pages,
-      # but sticking to the defined logic for 2xx/HTML is the cleanest implementation.
+        expect_no_standard_headers(headers)
+        expect(headers["content-security-policy"]).to be_nil
+      end
+
+      it "injects nothing on a redirect" do
+        headers = headers_for(302, { "location" => "/new" }, legacy)
+
+        expect_no_standard_headers(headers)
+        expect(headers["content-security-policy"]).to be_nil
+      end
+
+      it "injects nothing on an HTML 500 error page" do
+        headers = headers_for(500, { "content-type" => "text/html" }, legacy)
+
+        expect_no_standard_headers(headers)
+        expect(headers["content-security-policy"]).to be_nil
+      end
     end
   end
-
   # ====================================================================
   # CONFIGURATION & CUSTOMIZATION TESTS
   # ====================================================================

@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Targeting 0.2.0. See `PLAN.md` for the remaining remediation work (P2–P5).
+See `PLAN.md` for the remaining remediation work (P3–P5), targeted at 0.3.0.
+
+## [0.2.0] - 2026-09-12
+
+Widens which responses receive security headers and hardens every default. Read
+**Upgrading from 0.1.x** at the end of this entry before deploying.
 
 ### Changed
 
@@ -153,7 +158,8 @@ applications will need to opt back into behaviour they relied on.
   `X-Frame-Options`, `Referrer-Policy` and a configurable Content Security Policy,
   with `report_only` support.
 
-[Unreleased]: https://github.com/danielefrisanco/headerguard/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/danielefrisanco/headerguard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/danielefrisanco/headerguard/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/danielefrisanco/headerguard/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/danielefrisanco/headerguard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/danielefrisanco/headerguard/releases/tag/v0.1.0

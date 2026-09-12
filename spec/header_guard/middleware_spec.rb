@@ -325,6 +325,355 @@ RSpec.describe HeaderGuard::Middleware do
   end
 
   # ====================================================================
+  # OPTION VALIDATION TESTS
+  #
+  # Every option is validated at construction. A typo or malformed value must
+  # raise, not silently weaken the policy or emit a junk header.
+  # ====================================================================
+
+  describe "Option Validation" do
+    let(:inner) { ->(_env) { [200, { "content-type" => "text/html" }, ["ok"]] } }
+
+    def build(options)
+      described_class.new(inner, options)
+    end
+
+    it "accepts a well-formed configuration" do
+      expect do
+        build(
+          "X-Frame-Options" => "SAMEORIGIN",
+          content_security_policy: "default-src 'self'",
+          report_only: true,
+          html_only: false,
+          path_overrides: { %r{\A/embed/} => { "X-Frame-Options" => "ALLOWALL" } }
+        )
+      end.not_to raise_error
+    end
+
+    it "rejects a non-Hash options argument" do
+      expect { build("nope") }.to raise_error(ArgumentError, /must be a Hash/)
+    end
+
+    describe "option keys" do
+      it "rejects an unknown Symbol option, naming it" do
+        expect { build(reprot_only: true) }.to raise_error(ArgumentError, /unknown HeaderGuard option :reprot_only/)
+      end
+
+      it "rejects a misspelled report_only rather than silently enforcing the CSP" do
+        # The motivating case: a typo here used to emit a junk `report_onlyy`
+        # header and *enforce* a CSP the user meant only to report on.
+        expect { build(report_onlyy: true) }.to raise_error(ArgumentError)
+      end
+
+      it "lists the recognised options in the error" do
+        expect { build(bogus: 1) }.to raise_error(ArgumentError, /:content_security_policy, :report_only, :html_only, :path_overrides/)
+      end
+
+      it "rejects a key that is neither a String nor a Symbol" do
+        expect { build(42 => "x") }.to raise_error(ArgumentError, /unknown HeaderGuard option 42/)
+      end
+    end
+
+    describe "header names" do
+      it "rejects a name containing whitespace" do
+        expect { build("X Frame Options" => "DENY") }.to raise_error(ArgumentError, /not a valid HTTP header name/)
+      end
+
+      it "rejects a name containing a colon" do
+        expect { build("X-Frame-Options:" => "DENY") }.to raise_error(ArgumentError, /not a valid HTTP header name/)
+      end
+
+      it "rejects Content-Security-Policy as a raw header, pointing at the option" do
+        expect { build("Content-Security-Policy" => "default-src 'none'") }
+          .to raise_error(ArgumentError, /use the content_security_policy: and report_only: options/)
+      end
+
+      it "rejects Content-Security-Policy-Report-Only as a raw header" do
+        expect { build("content-security-policy-report-only" => "x") }.to raise_error(ArgumentError, /cannot be set as a raw header/)
+      end
+    end
+
+    describe "header values" do
+      it "rejects a value containing CRLF, naming response splitting" do
+        expect { build("X-Frame-Options" => "DENY\r\nSet-Cookie: pwned=1") }
+          .to raise_error(ArgumentError, /control character.*response splitting/)
+      end
+
+      it "rejects a value containing a bare LF" do
+        expect { build("X-Frame-Options" => "DENY\n") }.to raise_error(ArgumentError, /control character/)
+      end
+
+      it "rejects a value containing a NUL byte" do
+        expect { build("X-Frame-Options" => "DENY\0") }.to raise_error(ArgumentError, /control character/)
+      end
+
+      it "rejects a non-String value" do
+        expect { build("X-Frame-Options" => 1) }.to raise_error(ArgumentError, /must be a String, got 1/)
+      end
+
+      it "rejects an empty value and suggests nil" do
+        # The 0.1.x README recommended "" to disable a header; it emitted a
+        # malformed empty header. Fail loudly and point at the right way.
+        expect { build("Strict-Transport-Security" => "") }.to raise_error(ArgumentError, /is empty; pass nil to remove/)
+      end
+    end
+
+    describe "content_security_policy" do
+      it "rejects a value containing CRLF" do
+        expect { build(content_security_policy: "default-src 'self'\r\nX: y") }.to raise_error(ArgumentError, /control character/)
+      end
+
+      it "rejects an empty policy" do
+        expect { build(content_security_policy: "") }.to raise_error(ArgumentError, /is empty/)
+      end
+
+      it "rejects a non-String, non-boolean value" do
+        expect { build(content_security_policy: :strict) }.to raise_error(ArgumentError, /must be a String, false, or nil/)
+      end
+    end
+
+    describe "flags" do
+      it "rejects a non-boolean report_only" do
+        expect { build(report_only: "yes") }.to raise_error(ArgumentError, /report_only must be true or false/)
+      end
+
+      it "rejects a non-boolean html_only" do
+        expect { build(html_only: 1) }.to raise_error(ArgumentError, /html_only must be true or false/)
+      end
+    end
+  end
+
+  # ====================================================================
+  # HEADER REMOVAL TESTS
+  # ====================================================================
+
+  describe "Removing Headers" do
+    let(:env) { Rack::MockRequest.env_for("http://example.com/") }
+
+    def headers_from(options, app_headers = { "content-type" => "text/html" })
+      inner = ->(_env) { [200, app_headers, ["ok"]] }
+      described_class.new(inner, options).call(env)[1]
+    end
+
+    it "does not inject a default header set to nil" do
+      headers = headers_from("Strict-Transport-Security" => nil)
+
+      expect(headers).not_to have_key("strict-transport-security")
+    end
+
+    it "treats false the same as nil" do
+      headers = headers_from("Strict-Transport-Security" => false)
+
+      expect(headers).not_to have_key("strict-transport-security")
+    end
+
+    it "matches the header to remove case-insensitively" do
+      headers = headers_from("strict-transport-security" => nil)
+
+      expect(headers).not_to have_key("strict-transport-security")
+    end
+
+    it "still injects every other default" do
+      headers = headers_from("Strict-Transport-Security" => nil)
+
+      expect(headers["x-frame-options"]).to eq(default_headers["X-Frame-Options"])
+      expect(headers["content-security-policy"]).to eq(default_csp)
+    end
+
+    it "leaves the application's own value untouched for a removed header" do
+      # nil means "HeaderGuard does not manage this header", not "strip it".
+      headers = headers_from({ "X-Frame-Options" => nil },
+                             { "content-type" => "text/html", "x-frame-options" => "SAMEORIGIN" })
+
+      expect(headers["x-frame-options"]).to eq("SAMEORIGIN")
+    end
+
+    it "disables CSP with content_security_policy: false" do
+      headers = headers_from(content_security_policy: false)
+
+      expect(headers).not_to have_key("content-security-policy")
+      expect(headers).not_to have_key("content-security-policy-report-only")
+    end
+
+    it "leaves the application's own CSP untouched when disabled" do
+      # Lets an app that builds its CSP elsewhere (e.g. the Rails DSL) use
+      # HeaderGuard for the other headers only.
+      headers = headers_from({ content_security_policy: false },
+                             { "content-type" => "text/html", "content-security-policy" => "default-src 'none'" })
+
+      expect(headers["content-security-policy"]).to eq("default-src 'none'")
+    end
+
+    it "keeps the default CSP for content_security_policy: nil" do
+      # nil must not disable the CSP: `content_security_policy: ENV["CSP"]`
+      # with the variable unset would otherwise silently drop it.
+      headers = headers_from(content_security_policy: nil)
+
+      expect(headers["content-security-policy"]).to eq(default_csp)
+    end
+  end
+
+  # ====================================================================
+  # PATH OVERRIDE TESTS
+  # ====================================================================
+
+  describe "Path Overrides" do
+    def headers_at(path, options, app_headers = { "content-type" => "text/html" })
+      inner = ->(_env) { [200, app_headers, ["ok"]] }
+      env = Rack::MockRequest.env_for("http://example.com#{path}")
+      described_class.new(inner, options).call(env)[1]
+    end
+
+    let(:auth_relaxed) do
+      { path_overrides: { %r{\A/auth/[^/]+/callback\z} => { "Cross-Origin-Opener-Policy" => "unsafe-none" } } }
+    end
+
+    describe "matching" do
+      it "applies an override whose Regexp matches the path" do
+        headers = headers_at("/auth/google/callback", auth_relaxed)
+
+        expect(headers["cross-origin-opener-policy"]).to eq("unsafe-none")
+      end
+
+      it "applies the global policy to a path the Regexp does not match" do
+        headers = headers_at("/auth/google/callback/extra", auth_relaxed)
+
+        expect(headers["cross-origin-opener-policy"]).to eq(default_headers["Cross-Origin-Opener-Policy"])
+      end
+
+      it "matches a String key exactly, not as a prefix" do
+        options = { path_overrides: { "/embed" => { "X-Frame-Options" => "SAMEORIGIN" } } }
+
+        expect(headers_at("/embed", options)["x-frame-options"]).to eq("SAMEORIGIN")
+        expect(headers_at("/embedded", options)["x-frame-options"]).to eq("DENY")
+        expect(headers_at("/embed/", options)["x-frame-options"]).to eq("DENY")
+      end
+
+      it "uses the first matching override when several match" do
+        options = {
+          path_overrides: {
+            %r{\A/a} => { "X-Frame-Options" => "SAMEORIGIN" },
+            %r{\A/ab} => { "X-Frame-Options" => "ALLOWALL" }
+          }
+        }
+
+        expect(headers_at("/abc", options)["x-frame-options"]).to eq("SAMEORIGIN")
+      end
+
+      it "tolerates a missing PATH_INFO" do
+        inner = ->(_env) { [200, { "content-type" => "text/html" }, ["ok"]] }
+        headers = described_class.new(inner, auth_relaxed).call({})[1]
+
+        expect(headers["cross-origin-opener-policy"]).to eq(default_headers["Cross-Origin-Opener-Policy"])
+      end
+    end
+
+    describe "layering" do
+      it "inherits every header the override does not mention" do
+        headers = headers_at("/auth/google/callback", auth_relaxed)
+
+        expect(headers["strict-transport-security"]).to eq(default_headers["Strict-Transport-Security"])
+        expect(headers["x-frame-options"]).to eq(default_headers["X-Frame-Options"])
+        expect(headers["content-security-policy"]).to eq(default_csp)
+      end
+
+      it "layers on top of global custom headers, not the bare defaults" do
+        options = {
+          "X-Frame-Options" => "SAMEORIGIN",
+          path_overrides: { "/x" => { "Referrer-Policy" => "no-referrer" } }
+        }
+        headers = headers_at("/x", options)
+
+        expect(headers["x-frame-options"]).to eq("SAMEORIGIN")
+        expect(headers["referrer-policy"]).to eq("no-referrer")
+      end
+
+      it "can set a different CSP for one path" do
+        options = { path_overrides: { "/legacy" => { content_security_policy: "default-src *" } } }
+
+        expect(headers_at("/legacy", options)["content-security-policy"]).to eq("default-src *")
+        expect(headers_at("/", options)["content-security-policy"]).to eq(default_csp)
+      end
+
+      it "can switch one path to report-only while keeping the global CSP value" do
+        options = {
+          content_security_policy: "default-src 'self'",
+          path_overrides: { "/new" => { report_only: true } }
+        }
+        headers = headers_at("/new", options)
+
+        expect(headers["content-security-policy-report-only"]).to eq("default-src 'self'")
+        expect(headers).not_to have_key("content-security-policy")
+      end
+
+      it "can disable CSP for one path only" do
+        options = { path_overrides: { "/raw" => { content_security_policy: false } } }
+
+        expect(headers_at("/raw", options)).not_to have_key("content-security-policy")
+        expect(headers_at("/", options)["content-security-policy"]).to eq(default_csp)
+      end
+
+      it "can remove a header for one path only" do
+        options = { path_overrides: { "/widget" => { "X-Frame-Options" => nil } } }
+
+        expect(headers_at("/widget", options)).not_to have_key("x-frame-options")
+        expect(headers_at("/", options)["x-frame-options"]).to eq("DENY")
+      end
+
+      it "can set html_only for one path" do
+        options = { path_overrides: { "/api" => { html_only: true } } }
+        headers = headers_at("/api", options, { "content-type" => "application/json" })
+
+        expect(headers).not_to have_key("strict-transport-security")
+      end
+    end
+
+    describe "validation" do
+      let(:inner) { ->(_env) { [200, {}, ["ok"]] } }
+
+      it "rejects Strict-Transport-Security inside an override, explaining why" do
+        expect { described_class.new(inner, path_overrides: { "/x" => { "Strict-Transport-Security" => "max-age=0" } }) }
+          .to raise_error(ArgumentError, /Strict-Transport-Security cannot be overridden for "\/x": it is host-scoped/)
+      end
+
+      it "rejects removing Strict-Transport-Security inside an override too" do
+        expect { described_class.new(inner, path_overrides: { "/x" => { "strict-transport-security" => nil } }) }
+          .to raise_error(ArgumentError, /host-scoped/)
+      end
+
+      it "rejects nested path_overrides" do
+        expect { described_class.new(inner, path_overrides: { "/x" => { path_overrides: {} } }) }
+          .to raise_error(ArgumentError, /cannot be nested/)
+      end
+
+      it "rejects a non-Hash path_overrides" do
+        expect { described_class.new(inner, path_overrides: [["/x", {}]]) }
+          .to raise_error(ArgumentError, /must be a Hash of path matcher => options/)
+      end
+
+      it "rejects a matcher that is neither String nor Regexp" do
+        expect { described_class.new(inner, path_overrides: { :auth => {} }) }
+          .to raise_error(ArgumentError, /must be a String \(exact path\) or a Regexp, got :auth/)
+      end
+
+      it "rejects a non-Hash override value" do
+        expect { described_class.new(inner, path_overrides: { "/x" => "unsafe-none" }) }
+          .to raise_error(ArgumentError, %r{path_overrides\["/x"\] must be an options Hash})
+      end
+
+      it "validates header values inside overrides as strictly as at the top level" do
+        expect { described_class.new(inner, path_overrides: { "/x" => { "X-Frame-Options" => "a\r\nb" } }) }
+          .to raise_error(ArgumentError, /control character/)
+      end
+
+      it "rejects unknown options inside overrides" do
+        expect { described_class.new(inner, path_overrides: { "/x" => { reprot_only: true } }) }
+          .to raise_error(ArgumentError, /unknown HeaderGuard option :reprot_only/)
+      end
+    end
+  end
+
+  # ====================================================================
   # RACK 3 HEADER CASING
   #
   # The Rack 3 SPEC requires response header keys to be lowercase. An app that

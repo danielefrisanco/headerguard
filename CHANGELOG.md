@@ -7,7 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-See `PLAN.md` for the remaining remediation work (P3–P5), targeted at 0.3.0.
+Targeting 0.3.0. See `PLAN.md` for the remaining work (P4–P5).
+
+### Added
+
+- **Option validation.** Every option is checked at construction and raises `ArgumentError`
+  with a specific message. Previously an unrecognised Symbol key became a header name
+  verbatim, so `report_onlyy: true` emitted a junk `report_onlyy` header and silently
+  *enforced* a CSP the user meant only to report on. Now rejected: unknown Symbol options;
+  header names that are not valid HTTP tokens; `Content-Security-Policy` or its
+  `-Report-Only` variant given as a raw header (use the option); values that are not a
+  `String`; empty values; `report_only` / `html_only` values that are not `true` or `false`.
+
+- **Control characters in header values are rejected.** A header value or CSP containing
+  CR, LF, NUL or any other control character raises at startup. A CR/LF in a value built
+  from configuration (a `report-uri` from an environment variable, say) would otherwise
+  let it inject further headers or split the response.
+
+- **Removing a default header.** Set a header to `nil` (or `false`) and HeaderGuard stops
+  managing it: the default is not injected and any value the application sets itself
+  passes through untouched. Previously there was no way to opt out of a default; the README
+  suggested `""`, which emitted a malformed empty header.
+
+- **Disabling the CSP.** `content_security_policy: false` stops HeaderGuard sending a CSP,
+  for applications that build one elsewhere (the Rails `content_security_policy` DSL, for
+  example) and want HeaderGuard for the other headers only. `content_security_policy: nil`
+  deliberately keeps the *default* policy, so an unset environment variable cannot silently
+  drop the CSP.
+
+- **Per-path overrides.** `path_overrides: { matcher => options }` scopes a different
+  policy to particular routes — an identity provider's popup page that must keep
+  `window.opener`, an embeddable widget that other sites frame, a legacy page that still
+  needs inline scripts — without relaxing anything site-wide. A `Regexp` key is matched
+  against the request path; a `String` key must match exactly. First match wins. The value
+  is an options hash of the same shape as the top level (headers, `content_security_policy:`,
+  `report_only:`, `html_only:`), layered on top of the global configuration.
+  `Strict-Transport-Security` is refused inside an override: HSTS is host-scoped, not
+  per-document, so a weaker value on one path would apply to the whole site.
+
+### Upgrading from 0.2.x
+
+- Configurations that were accepted but wrong now fail at startup. If HeaderGuard raises
+  `ArgumentError` on boot, the message names the offending option. The common cases: a
+  misspelled Symbol option, and `"Strict-Transport-Security" => ""` from the old README
+  advice — replace with `nil`.
 
 ## [0.2.0] - 2026-09-12
 

@@ -120,26 +120,37 @@ failures.
 
 ---
 
-## P3 — Configuration API correctness
+## P3 — Configuration API correctness ✅ DONE (0.3.0)
 
-- [ ] **Validate options** (`middleware.rb:24`). Unknown keys become header names verbatim, so a
-      typo like `report_onlyy: true` silently *enforces* a CSP the user meant to only report on,
-      and emits a junk `report_onlyy` header. Raise `ArgumentError` on unrecognised symbol keys;
-      treat only strings as custom headers.
-- [ ] **Reject CRLF in header values.** A CSP `report-uri` built from ENV containing `\r\n`
-      gives response splitting. Validate on init and raise.
-- [ ] **Support removing a default header.** README currently suggests
-      `header_options["Strict-Transport-Security"] = ""`, which emits an empty header rather
-      than omitting it. Make `nil` delete the header, and fix the README example.
+- [x] **Validate options** — done. Unknown Symbol keys, non-token header names, non-String /
+      empty values, non-boolean flags, and the CSP given as a raw header all raise
+      `ArgumentError` at construction with a message naming the offender and, for the CSP
+      case, pointing at the right option.
+- [x] **Reject CRLF in header values** — done, broadened to every control character
+      (`[\x00-\x1F\x7F]`), for header values and the CSP alike.
+- [x] **Support removing a default header** — done. `nil` or `false` means "HeaderGuard does
+      not manage this header": nothing injected, the app's own value passes through. README dev
+      example fixed. `""` is now rejected with a message pointing at `nil`.
+      Also: `content_security_policy: false` disables the CSP (for apps using the Rails DSL);
+      `nil` deliberately keeps the default so an unset ENV var can't drop it.
 - [ ] Consider a structured CSP builder (hash of directive => sources) instead of raw strings,
-      so directives can be merged rather than wholesale replaced.
-- [ ] **Path-scoped overrides** (`path_overrides: { %r{\A/auth/} => { ... } }`), so an identity
-      provider can set `Cross-Origin-Opener-Policy: unsafe-none` on just its popup page, or an
-      embeddable widget can relax `X-Frame-Options`/CORP on one route, without weakening the
-      rest of the site. Value is a nested options hash with the same shape as the top level.
-      **Must reject `Strict-Transport-Security`** inside overrides: HSTS is host-scoped, not
-      per-document, so a per-path `max-age=0` would wipe HSTS for the whole host. Belongs with
-      the option validation above, which is what makes an override map safe.
+      so directives can be merged rather than wholesale replaced. **Deferred** — a larger API
+      design question; the raw-string approach with per-path overrides covers the immediate
+      cases.
+- [x] **Path-scoped overrides** — done as `path_overrides:`. `Regexp` matches the path, `String`
+      matches exactly, first match wins; value is a nested options hash layered over the global
+      policy. `Strict-Transport-Security` is refused inside an override (host-scoped), as is
+      nesting. Every value inside an override is validated as strictly as at the top level.
+
+### Resolved in 0.3.0
+
+`middleware.rb` now resolves configuration into `Policy` structs — one global, one per path
+override — via a single `build_policy(options, base)` that layers an options hash over a base.
+The same function handles the top level (over the defaults) and each override (over the global
+policy), so overrides inherit everything they don't mention and are validated identically.
+`call` selects the policy by `PATH_INFO`, then applies it as before. 48 new tests across
+"Option Validation", "Removing Headers" and "Path Overrides". README gains sections 5–7
+(removing headers, per-path overrides, validation). Suite: 88 examples, 0 failures.
 
 ---
 
@@ -178,5 +189,6 @@ failures.
 2. **0.2.0** — P1 ✅ + P2 ✅ done, ready to release. These change which headers appear on
    which responses and what the defaults are, so they are breaking-ish and got a minor bump
    and a detailed upgrade section in the CHANGELOG.
-3. **0.3.0** — P3 API work.
+3. **0.3.0** — P3 ✅ done. Additive (validation, `nil` removal, `path_overrides`), but
+   previously-accepted-yet-wrong configurations now raise at boot, so a minor bump.
 4. P4/P5 can land alongside any of the above.

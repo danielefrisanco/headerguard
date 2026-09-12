@@ -60,12 +60,14 @@ If you only want to relax one or two headers (like HSTS) but keep the others, yo
 header_options = {}
 
 if Rails.env.development? || Rails.env.test?
-  # 1. Disable Strict-Transport-Security for local HTTP development
-  header_options["Strict-Transport-Security"] = ""
+  # 1. Don't send Strict-Transport-Security for local HTTP development.
+  #    nil means "HeaderGuard does not manage this header". (An empty string
+  #    is rejected: it would send a malformed header.)
+  header_options["Strict-Transport-Security"] = nil
   
-  # 2. Relax CSP to allow development tools that rely on 'unsafe-inline' scripts/styles
-  # NOTE: The HeaderGuard default CSP uses 'script-src "self"'. This adds the required dev overrides.
-  dev_csp = "script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+  # 2. Relax CSP to allow development tools that rely on 'unsafe-inline' scripts/styles.
+  #    This replaces the whole default policy, so include every directive you still want.
+  dev_csp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'"
   header_options[:content_security_policy] = dev_csp
 end
 
@@ -172,12 +174,71 @@ config.middleware.use HeaderGuard::Middleware, html_only: true
 ```
 This is a migration aid, not a recommended configuration: it leaves JSON responses without `X-Content-Type-Options`, redirects without HSTS, and error pages without a CSP.
 
+#### 5\. Removing a Default Header
+
+Set a header to `nil` (or `false`) and HeaderGuard stops managing it: the default is not injected, and any value your application sets itself passes through untouched.
+
+```ruby
+# Don't send X-Frame-Options; the app sets its own where it needs one.
+config.middleware.use HeaderGuard::Middleware, "X-Frame-Options" => nil
+
+```
+
+To stop HeaderGuard sending a CSP at all — for example because your application builds one elsewhere, such as with the Rails `content_security_policy` DSL — pass `false`:
+
+```ruby
+# HeaderGuard manages every header except the CSP.
+config.middleware.use HeaderGuard::Middleware, content_security_policy: false
+
+```
+
+Note that `content_security_policy: nil` keeps the **default** policy rather than disabling it, so an unset environment variable (`content_security_policy: ENV["CSP"]`) cannot silently drop your CSP. Only an explicit `false` turns it off.
+
+#### 6\. Per-Path Overrides
+
+Some routes legitimately need a different policy from the rest of the site: an OAuth callback page that must keep `window.opener`, a widget that other sites embed in a frame, a legacy admin page that still needs inline scripts. Rather than relaxing a header site-wide for the sake of one route, scope the change to that route:
+
+```ruby
+config.middleware.use HeaderGuard::Middleware,
+  path_overrides: {
+    # You are the identity provider: the popup page the client opens must keep window.opener.
+    %r{\A/oauth/authorize\z} => { "Cross-Origin-Opener-Policy" => "unsafe-none" },
+
+    # An embeddable widget: framed by other sites, its assets loaded cross-origin.
+    %r{\A/embed/} => {
+      "X-Frame-Options"              => nil,
+      "Cross-Origin-Resource-Policy" => "cross-origin",
+      content_security_policy:          "default-src 'self'; frame-ancestors *"
+    },
+
+    # Trial a stricter policy on one page before rolling it out.
+    "/checkout" => { content_security_policy: "default-src 'none'; script-src 'self'", report_only: true }
+  }
+
+```
+
+- A **`Regexp`** key is matched against the request path; a **`String`** key must match the path exactly (it is not a prefix — use a `Regexp` for prefixes). The first matching entry wins.
+- The value is an options hash with the same shape as the top level: header overrides, `content_security_policy:`, `report_only:`, `html_only:`. It is layered **on top of** your global configuration, so a path inherits everything it doesn't mention.
+- **`Strict-Transport-Security` cannot be overridden per path** and HeaderGuard will refuse to start if you try. HSTS is host-scoped, not per-document: a weaker value sent on one path would update the browser's policy for the entire site.
+
+Anchor your patterns (`\A`, `\z`). `%r{/auth}` also matches `/authors`.
+
+#### 7\. Validation
+
+Every option is checked when the middleware is constructed, and HeaderGuard raises `ArgumentError` with a specific message rather than starting with a weakened policy:
+
+- an unrecognised Symbol option (`reprot_only: true` used to emit a junk header and silently *enforce* the CSP it was meant to only report on);
+- a header name that isn't a valid HTTP token, or that names the CSP (use `content_security_policy:` instead);
+- a header value or CSP that isn't a `String`, is empty, or contains a control character — a CR/LF would let a value injected from configuration split the response;
+- `report_only` / `html_only` values that aren't `true` or `false`;
+- `Strict-Transport-Security` inside a path override.
+
 How It Works
 ------------
 
 HeaderGuard hooks into the Rack request lifecycle and, on every response passing through it:
 
-1.  **Header Merging:** It takes the default security headers and merges them with any custom headers supplied during initialization, ensuring user configuration takes precedence.
+1.  **Header Merging:** At startup it validates your options, then merges any custom headers over the defaults, ensuring user configuration takes precedence. Per-path overrides are layered over that once more. On each request it picks the policy for the request path.
     
 2.  **Standard Header Injection:** It injects every header in the table above (HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, the cross-origin isolation headers and `Permissions-Policy`) on **every** response, regardless of status code or content type. HSTS matters most on the HTTP→HTTPS redirect, and `nosniff` exists precisely to protect non-HTML bodies such as JSON.
     
